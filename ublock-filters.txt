@@ -1,0 +1,18 @@
+! Title: Twitter Annoyances: strip share tracking params
+! Description: Removes the s, t and a params X adds to shared links, before the page request is sent
+! Homepage: https://github.com/nlopez/twitter-annoyances
+! Expires: 7 days
+!
+! `doc` limits these to page loads so X's API requests are left alone.
+
+! s: client and share method (20 = web, 46 = iPhone, 19 = Android)
+||x.com^$doc,removeparam=s
+||twitter.com^$doc,removeparam=s
+
+! t: opaque token tied to the sharing account
+||x.com^$doc,removeparam=t
+||twitter.com^$doc,removeparam=t
+
+! a: per-share token tying each click to the session that generated the link
+||x.com^$doc,removeparam=a
+||twitter.com^$doc,removeparam=a

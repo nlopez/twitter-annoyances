@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Annoyances
 // @namespace    https://github.com/nlopez/twitter-annoyances
-// @version      0.1.1
+// @version      0.1.2
 // @description  Fixes assorted x.com annoyances
 // @homepageURL  https://github.com/nlopez/twitter-annoyances
 // @downloadURL  https://raw.githubusercontent.com/nlopez/twitter-annoyances/main/twitter-annoyances.user.js
@@ -16,12 +16,26 @@
 (() => {
   'use strict';
 
-  // Each fix: { name, css?, run? }. `css` is injected once; `run(root)` is
-  // called on load and on every DOM mutation batch.
+  // On Firefox, x.com's CSP blocks page injection, so Violentmonkey runs this
+  // in an isolated content script. There, x.com's own objects are reached
+  // through wrappedJSObject, and functions and objects handed to x.com must
+  // be exported into its scope. In the page itself these are no-ops.
+  const pageWindow = (typeof unsafeWindow === 'object' ? unsafeWindow : window).wrappedJSObject ?? window;
+  const isolated = pageWindow !== window;
+  const toPage = (fn) => (isolated ? exportFunction(fn, pageWindow) : fn);
+  const toPageObject = (obj) => (isolated ? cloneInto(obj, pageWindow) : obj);
+  const pageObject = (obj) => obj?.wrappedJSObject ?? obj;
+
+  // Make x.com's router re-read the address bar.
+  const firePopstate = () =>
+    pageWindow.dispatchEvent(
+      new pageWindow.PopStateEvent('popstate', toPageObject({ state: pageWindow.history.state })),
+    );
+
   // Navigate inside x.com's single-page app without a full reload.
   const spaNavigate = (path) => {
     history.pushState({}, '', path);
-    dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+    firePopstate();
   };
 
   // Let cmd/ctrl/shift/middle clicks fall through to the real href.
@@ -192,8 +206,9 @@
   const GROK_ICON_PATH_PREFIX = 'M12.745 20.54l10.97-8.19';
 
   const isPromoted = (article) => {
-    const fiberKey = Object.keys(article).find((k) => k.startsWith('__reactFiber$'));
-    for (let fiber = fiberKey && article[fiberKey], i = 0; fiber && i < 40; fiber = fiber.return, i++) {
+    const el = pageObject(article);
+    const fiberKey = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+    for (let fiber = fiberKey && el[fiberKey], i = 0; fiber && i < 40; fiber = fiber.return, i++) {
       const props = fiber.memoizedProps;
       if (props && typeof props === 'object' && 'promotedContent' in props) return !!props.promotedContent;
     }
@@ -239,6 +254,9 @@
     }
   };
 
+  // Each fix: { name, css?, init?, run? }. `css` is injected once, `init()`
+  // runs at document-start, and `run(root)` runs on load and on every DOM
+  // mutation batch.
   const fixes = [
     {
       // Every ancestor of the search form hides its children that don't
@@ -388,81 +406,10 @@
         }`,
     },
     {
-      // Make Photos the default media filter: bare /<user>/media means Photos.
-      // x.com's dropdown selects Videos by navigating to that same bare URL
-      // from the media page itself, so that case gets ?filter=video instead.
-      name: 'profile-media-defaults-to-photos',
-      init() {
-        const NOT_USERS = new Set(['i', 'settings', 'compose', 'search', 'explore', 'home', 'notifications', 'messages']);
-        const mediaUser = (url) => {
-          const m = url.pathname.match(/^\/([^/]+)\/media\/?$/);
-          return m && !NOT_USERS.has(m[1]) ? m[1] : null;
-        };
-
-        // Page loads: rewrite before x.com's router reads the URL.
-        const loaded = !location.search && mediaUser(location);
-        if (loaded) history.replaceState(history.state, '', `/${loaded}/media?filter=photo${location.hash}`);
-
-        // In-app navigation. The router has already decided to render the
-        // bare URL (Videos), so after switching to Photos, fire popstate to
-        // make it re-read the address bar.
-        for (const method of ['pushState', 'replaceState']) {
-          const original = history[method];
-          history[method] = function (state, title, url) {
-            let resync = false;
-            if (url != null) {
-              try {
-                const u = new URL(url, location.href);
-                const user = u.origin === location.origin && !u.search && mediaUser(u);
-                if (user) {
-                  const choosingVideos = mediaUser(location)?.toLowerCase() === user.toLowerCase();
-                  url = `/${user}/media?filter=${choosingVideos ? 'video' : 'photo'}${u.hash}`;
-                  resync = !choosingVideos;
-                }
-              } catch {}
-            }
-            const result = original.call(this, state, title, url);
-            if (resync) setTimeout(() => dispatchEvent(new PopStateEvent('popstate', { state })));
-            return result;
-          };
-        }
-      },
-    },
-    {
-      // x.com shows only "Something went wrong" when it rate-limits a request.
-      // Add when the limit resets, next to the Retry button.
-      name: 'explain-rate-limit-errors',
-      init() {
-        const urls = new WeakMap();
-        const { open, send } = XMLHttpRequest.prototype;
-        XMLHttpRequest.prototype.open = function (method, url) {
-          urls.set(this, String(url));
-          return open.apply(this, arguments);
-        };
-        XMLHttpRequest.prototype.send = function () {
-          this.addEventListener('loadend', () => {
-            const op = urls.get(this)?.match(/\/i\/api\/graphql\/[^/]+\/([^/?]+)/)?.[1];
-            if (!op) return;
-            if (this.status === 429) {
-              rateLimits.set(op, {
-                limit: this.getResponseHeader('x-rate-limit-limit') ?? '?',
-                reset: Number(this.getResponseHeader('x-rate-limit-reset')),
-                at: Date.now(),
-              });
-            } else if (this.status >= 200 && this.status < 300) {
-              rateLimits.delete(op);
-            }
-          });
-          return send.apply(this, arguments);
-        };
-        // Keep the countdown current while a note is showing.
-        setInterval(() => rateLimits.size && updateRateLimitNotes(), 15000);
-      },
-      run: updateRateLimitNotes,
-    },
-    {
       // Share links get ?s=<client>&t=<sharer id>&a=... appended. Strip them from
-      // copied/shared links and from the address bar when opening one.
+      // copied/shared links and from the address bar when opening one. Runs
+      // before the media fix so its address-bar cleanup isn't seen as a
+      // navigation.
       name: 'strip-share-tracking-params',
       init() {
         const clean = (text) =>
@@ -487,23 +434,26 @@
         const here = clean(location.href);
         if (here !== location.href) history.replaceState(history.state, '', here);
 
-        const clip = navigator.clipboard;
+        const nav = pageWindow.navigator;
+        const clip = nav.clipboard;
         if (clip?.writeText) {
           const writeText = clip.writeText;
-          clip.writeText = function (text) {
+          clip.writeText = toPage(function (text) {
             return writeText.call(this, typeof text === 'string' ? clean(text) : text);
-          };
+          });
         }
 
-        if (navigator.share) {
-          const share = navigator.share;
-          navigator.share = function (data) {
-            if (data && typeof data === 'object') {
-              data = { ...data };
-              for (const k of ['url', 'text']) if (typeof data[k] === 'string') data[k] = clean(data[k]);
+        if (nav.share) {
+          const share = nav.share;
+          nav.share = toPage(function (data) {
+            const src = pageObject(data);
+            if (src && typeof src === 'object') {
+              const copy = { ...src };
+              for (const k of ['url', 'text']) if (typeof copy[k] === 'string') copy[k] = clean(copy[k]);
+              data = toPageObject(copy);
             }
             return share.call(this, data);
-          };
+          });
         }
 
         // Fallback path: execCommand('copy') on a selected hidden textarea.
@@ -523,6 +473,81 @@
           true,
         );
       },
+    },
+    {
+      // Make Photos the default media filter: bare /<user>/media means Photos.
+      // x.com's dropdown selects Videos by navigating to that same bare URL
+      // from the media page itself, so that case gets ?filter=video instead.
+      name: 'profile-media-defaults-to-photos',
+      init() {
+        const NOT_USERS = new Set(['i', 'settings', 'compose', 'search', 'explore', 'home', 'notifications', 'messages']);
+        const mediaUser = (url) => {
+          const m = url.pathname.match(/^\/([^/]+)\/media\/?$/);
+          return m && !NOT_USERS.has(m[1]) ? m[1] : null;
+        };
+
+        // Page loads: rewrite before x.com's router reads the URL.
+        const loaded = !location.search && mediaUser(location);
+        if (loaded) history.replaceState(history.state, '', `/${loaded}/media?filter=photo${location.hash}`);
+
+        // In-app navigation. The router has already decided to render the
+        // bare URL (Videos), so after switching to Photos, fire popstate to
+        // make it re-read the address bar.
+        const pageHistory = pageWindow.history;
+        for (const method of ['pushState', 'replaceState']) {
+          const original = pageHistory[method];
+          pageHistory[method] = toPage(function (state, title, url) {
+            let resync = false;
+            if (url != null) {
+              try {
+                const u = new URL(String(url), location.href);
+                const user = u.origin === location.origin && !u.search && mediaUser(u);
+                if (user) {
+                  const choosingVideos = mediaUser(location)?.toLowerCase() === user.toLowerCase();
+                  url = `/${user}/media?filter=${choosingVideos ? 'video' : 'photo'}${u.hash}`;
+                  resync = !choosingVideos;
+                }
+              } catch {}
+            }
+            const result = original.call(this, state, title, url);
+            if (resync) setTimeout(firePopstate);
+            return result;
+          });
+        }
+      },
+    },
+    {
+      // x.com shows only "Something went wrong" when it rate-limits a request.
+      // Add when the limit resets, next to the Retry button.
+      name: 'explain-rate-limit-errors',
+      init() {
+        const urls = new WeakMap();
+        const proto = pageWindow.XMLHttpRequest.prototype;
+        const { open, send } = proto;
+        proto.open = toPage(function (method, url) {
+          urls.set(this, String(url));
+          return open.apply(this, arguments);
+        });
+        proto.send = toPage(function () {
+          this.addEventListener('loadend', () => {
+            const op = urls.get(this)?.match(/\/i\/api\/graphql\/[^/]+\/([^/?]+)/)?.[1];
+            if (!op) return;
+            if (this.status === 429) {
+              rateLimits.set(op, {
+                limit: this.getResponseHeader('x-rate-limit-limit') ?? '?',
+                reset: Number(this.getResponseHeader('x-rate-limit-reset')),
+                at: Date.now(),
+              });
+            } else if (this.status >= 200 && this.status < 300) {
+              rateLimits.delete(op);
+            }
+          });
+          return send.apply(this, arguments);
+        });
+        // Keep the countdown current while a note is showing.
+        setInterval(() => rateLimits.size && updateRateLimitNotes(), 15000);
+      },
+      run: updateRateLimitNotes,
     },
   ];
 

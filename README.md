@@ -62,6 +62,20 @@ Each save is reinstalled and x.com reloads. See [Violentmonkey's guide](https://
 
 On Firefox, logged-in x.com's CSP blocks page injection, so Violentmonkey runs the script as an isolated content script (`@inject-into auto`). Chromium injects into the page. Code that patches x.com's own objects must work in both: use the `pageWindow`, `toPage`, `pageObject` and `firePopstate` helpers at the top of the script, and call x.com's functions with `Reflect.apply`. Test those changes in Firefox, since Playwright can't reproduce content mode.
 
+### Firefox with Violentmonkey
+
+`dev/firefox.mjs` drives stock Firefox with the real Violentmonkey, so it reproduces content mode. It keeps a persistent profile in `.dev/`.
+
+```sh
+npm install --prefix dev
+node dev/firefox.mjs start      # launch Firefox and the script server
+node dev/firefox.mjs install    # install the script into Violentmonkey, tracking edits
+node dev/firefox.mjs run <file> # run <file>'s default export: async ({ browser, page }) => result
+node dev/firefox.mjs stop
+```
+
+Log in to x.com once in the window `start` opens. Leave Violentmonkey's installer tab open; closing it stops tracking.
+
 ### Playwright
 
 `dev/load.js` injects the userscript at document-start with the Playwright MCP server. Close the browser first (`browser_close`), since init scripts can't be removed, then run it with `browser_run_code_unsafe` and `filename: "dev/load.js"`.

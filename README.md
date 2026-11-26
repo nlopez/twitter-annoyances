@@ -65,3 +65,5 @@ On Firefox, logged-in x.com's CSP blocks page injection, so Violentmonkey runs t
 ### Playwright
 
 `dev/load.js` injects the userscript at document-start with the Playwright MCP server. Close the browser first (`browser_close`), since init scripts can't be removed, then run it with `browser_run_code_unsafe` and `filename: "dev/load.js"`.
+
+`.mcp.json` adds a `playwright-firefox` server that drives Playwright's Firefox build with a persistent profile in `.playwright-mcp/firefox-profile`. Install the browser once with `npx playwright@1.66.0-alpha-2026-11-09 install firefox` (the Playwright version `@playwright/mcp@0.0.85` uses), then log in to x.com in the window it opens. It injects the script straight into the page, so it still doesn't reproduce Violentmonkey's content mode.

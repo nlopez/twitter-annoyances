@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "playwright-firefox": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.85",
+        "--browser",
+        "firefox",
+        "--user-data-dir",
+        ".playwright-mcp/firefox-profile"
+      ]
+    }
+  }
+}

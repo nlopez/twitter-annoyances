@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Annoyances
 // @namespace    https://github.com/nlopez/twitter-annoyances
-// @version      0.1.2
+// @version      0.1.3
 // @description  Fixes assorted x.com annoyances
 // @homepageURL  https://github.com/nlopez/twitter-annoyances
 // @downloadURL  https://raw.githubusercontent.com/nlopez/twitter-annoyances/main/twitter-annoyances.user.js
@@ -20,17 +20,20 @@
   // in an isolated content script. There, x.com's own objects are reached
   // through wrappedJSObject, and functions and objects handed to x.com must
   // be exported into its scope. In the page itself these are no-ops.
-  const pageWindow = (typeof unsafeWindow === 'object' ? unsafeWindow : window).wrappedJSObject ?? window;
+  const pageWindow =
+    window.wrappedJSObject ?? (typeof unsafeWindow === 'object' ? unsafeWindow.wrappedJSObject : undefined) ?? window;
   const isolated = pageWindow !== window;
   const toPage = (fn) => (isolated ? exportFunction(fn, pageWindow) : fn);
   const toPageObject = (obj) => (isolated ? cloneInto(obj, pageWindow) : obj);
   const pageObject = (obj) => obj?.wrappedJSObject ?? obj;
 
   // Make x.com's router re-read the address bar.
-  const firePopstate = () =>
-    pageWindow.dispatchEvent(
-      new pageWindow.PopStateEvent('popstate', toPageObject({ state: pageWindow.history.state })),
-    );
+  // The event init is built from x.com's own Object so x.com can read it.
+  const firePopstate = () => {
+    const init = new pageWindow.Object();
+    init.state = pageWindow.history.state;
+    pageWindow.dispatchEvent(new pageWindow.PopStateEvent('popstate', init));
+  };
 
   // Navigate inside x.com's single-page app without a full reload.
   const spaNavigate = (path) => {

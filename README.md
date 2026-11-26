@@ -26,7 +26,7 @@ The list removes the `s`, `t` and `a` tracking params X adds to shared links, be
 
 ### Navigation
 
-- Moves Explore, Chat, Calls and Grok out of the sidebar into the **More** menu.
+- Moves Explore, Chat, Calls, Grok and X Money out of the sidebar into the **More** menu.
 - Adds **Settings and privacy** to the sidebar.
 - Adds a heart link to your likes, which fills in while you're on that page.
 - Shows only the search box in the right sidebar.
@@ -37,6 +37,7 @@ The list removes the `s`, `t` and `a` tracking params X adds to shared links, be
 - Hides Grok image generation in the composer.
 - Hides the floating Grok and chat drawers.
 - Hides promoted posts.
+- Hides other X Money buttons, such as the one next to **Edit profile**.
 - Hides the "You aren't verified yet" box on your profile.
 
 ### Behavior

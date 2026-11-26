@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Annoyances
 // @namespace    https://github.com/nlopez/twitter-annoyances
-// @version      0.1.4
+// @version      0.1.5
 // @description  Fixes assorted x.com annoyances
 // @homepageURL  https://github.com/nlopez/twitter-annoyances
 // @downloadURL  https://raw.githubusercontent.com/nlopez/twitter-annoyances/main/twitter-annoyances.user.js
@@ -135,8 +135,20 @@
   };
   const MENU_SETTINGS = '[data-testid="Dropdown"] a[data-testid="settings"]';
 
-  // Left-nav items to move into the "More" menu.
-  const MOVED_TO_MENU = ['/explore', '/i/chat', '/i/calls', '/i/grok'];
+  const MONEY_ICON_PATH_PREFIX = 'M16.161 3.55h4.117l-1.924 6.416';
+  const MONEY_BUTTON = `:is(a, button, [role="link"], [role="button"]):has(path[d^="${MONEY_ICON_PATH_PREFIX}"])`;
+
+  // Left-nav items to move into the "More" menu, as selectors within the
+  // left column's header. X Money sits in the header but outside the nav.
+  const NAV_COLUMN = 'header[role="banner"]';
+  const MOVED_TO_MENU = [
+    { key: 'explore', selector: 'a[href="/explore"]' },
+    { key: 'chat', selector: 'a[href="/i/chat"]' },
+    { key: 'calls', selector: 'a[href="/i/calls"]' },
+    { key: 'grok', selector: 'a[href="/i/grok"]' },
+    // X Money is matched by icon; its label is localized.
+    { key: 'money', selector: MONEY_BUTTON },
+  ];
 
   // Some localized labels only exist on particular pages (e.g. "Settings and
   // privacy" while the More menu is open), so remember them for nav items.
@@ -288,7 +300,7 @@
       // Hide the nav links; the "More" menu gets copies that navigate the
       // same way. The originals stay in the DOM so their icons can be reused.
       name: 'move-nav-items-to-more-menu',
-      css: MOVED_TO_MENU.map((href) => `${NAV} > a[href="${href}"]`).join(',\n') + ' { display: none !important; }',
+      css: MOVED_TO_MENU.map(({ selector }) => `${NAV_COLUMN} ${selector}`).join(',\n') + ' { display: none !important; }',
       run() {
         const settings = document.querySelector(MENU_SETTINGS);
         if (!settings) return;
@@ -297,18 +309,21 @@
         const list = template.parentElement;
         if (list.querySelector('[data-ta-moved]')) return;
 
-        const items = MOVED_TO_MENU.map((href) => {
+        const items = MOVED_TO_MENU.flatMap(({ key, selector }) => {
+          const navLink = document.querySelector(`${NAV_COLUMN} ${selector}`);
+          if (!navLink) return [];
           // The nav only renders visible text in its wide layout; otherwise
           // use its (longer) accessible name. Both are localized by x.com.
-          const navLink = document.querySelector(`${NAV} > a[href="${href}"]`);
-          const label = navLink?.textContent.trim() || navLink?.getAttribute('aria-label') || href;
+          const label = navLink.textContent.trim() || navLink.getAttribute('aria-label') || key;
+          const href = navLink.getAttribute('href');
           const item = template.cloneNode(true);
           const a = item.querySelector('a');
-          a.setAttribute('href', href);
-          a.dataset.testid = `ta-menu${href.replaceAll('/', '-')}`;
+          if (href) a.setAttribute('href', href);
+          else a.removeAttribute('href');
+          a.dataset.testid = `ta-menu-${key}`;
           a.dataset.taMoved = '';
           a.querySelector('span').textContent = label;
-          const navSvg = navLink?.querySelector('svg');
+          const navSvg = navLink.querySelector('svg');
           if (navSvg) {
             const svg = a.querySelector('svg');
             svg.setAttribute('viewBox', navSvg.getAttribute('viewBox'));
@@ -318,12 +333,23 @@
           onPlainClick(a, () => {
             // The More button toggles the menu; synthetic Escape doesn't close it.
             document.querySelector('[data-testid="AppTabBar_More_Menu"]')?.click();
-            spaNavigate(href);
+            // Items without an href navigate from x.com's own click handler.
+            if (href) spaNavigate(href);
+            else navLink.click();
           });
-          return item;
+          return [item];
         });
         list.prepend(...items);
       },
+    },
+    {
+      // X Money buttons outside the "More" menu, such as the one next to
+      // "Edit profile" (testid ownProfilePaymentsButton).
+      name: 'hide-x-money-buttons',
+      css: `
+        ${MONEY_BUTTON}:not([data-ta-moved]) {
+          display: none !important;
+        }`,
     },
     {
       // Hide "Settings and privacy" in the "More" menu and add it to the nav,

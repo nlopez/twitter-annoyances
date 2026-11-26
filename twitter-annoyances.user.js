@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Annoyances
 // @namespace    https://github.com/nlopez/twitter-annoyances
-// @version      0.1.0
+// @version      0.1.1
 // @description  Fixes assorted x.com annoyances
 // @homepageURL  https://github.com/nlopez/twitter-annoyances
 // @downloadURL  https://raw.githubusercontent.com/nlopez/twitter-annoyances/main/twitter-annoyances.user.js
@@ -10,7 +10,7 @@
 // @match        https://twitter.com/*
 // @run-at       document-start
 // @grant        none
-// @inject-into  page
+// @inject-into  auto
 // ==/UserScript==
 
 (() => {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitter Annoyances
 // @namespace    https://github.com/nlopez/twitter-annoyances
-// @version      0.1.3
+// @version      0.1.4
 // @description  Fixes assorted x.com annoyances
 // @homepageURL  https://github.com/nlopez/twitter-annoyances
 // @downloadURL  https://raw.githubusercontent.com/nlopez/twitter-annoyances/main/twitter-annoyances.user.js
@@ -20,6 +20,8 @@
   // in an isolated content script. There, x.com's own objects are reached
   // through wrappedJSObject, and functions and objects handed to x.com must
   // be exported into its scope. In the page itself these are no-ops.
+  // Call x.com's functions with Reflect.apply, not fn.apply/fn.call: those
+  // are x.com's own methods and can't read this script's argument arrays.
   const pageWindow =
     window.wrappedJSObject ?? (typeof unsafeWindow === 'object' ? unsafeWindow.wrappedJSObject : undefined) ?? window;
   const isolated = pageWindow !== window;
@@ -442,7 +444,7 @@
         if (clip?.writeText) {
           const writeText = clip.writeText;
           clip.writeText = toPage(function (text) {
-            return writeText.call(this, typeof text === 'string' ? clean(text) : text);
+            return Reflect.apply(writeText, this, [typeof text === 'string' ? clean(text) : text]);
           });
         }
 
@@ -455,7 +457,7 @@
               for (const k of ['url', 'text']) if (typeof copy[k] === 'string') copy[k] = clean(copy[k]);
               data = toPageObject(copy);
             }
-            return share.call(this, data);
+            return Reflect.apply(share, this, [data]);
           });
         }
 
@@ -512,7 +514,7 @@
                 }
               } catch {}
             }
-            const result = original.call(this, state, title, url);
+            const result = Reflect.apply(original, this, [state, title, url]);
             if (resync) setTimeout(firePopstate);
             return result;
           });
@@ -529,7 +531,7 @@
         const { open, send } = proto;
         proto.open = toPage(function (method, url) {
           urls.set(this, String(url));
-          return open.apply(this, arguments);
+          return Reflect.apply(open, this, [...arguments]);
         });
         proto.send = toPage(function () {
           this.addEventListener('loadend', () => {
@@ -545,7 +547,7 @@
               rateLimits.delete(op);
             }
           });
-          return send.apply(this, arguments);
+          return Reflect.apply(send, this, [...arguments]);
         });
         // Keep the countdown current while a note is showing.
         setInterval(() => rateLimits.size && updateRateLimitNotes(), 15000);

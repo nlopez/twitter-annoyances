@@ -391,12 +391,14 @@
     {
       // Matched by icon, since the button's label is localized. The same icon
       // also marks "Translated from …" lines, which aren't buttons.
-      // Also covers other Grok-icon buttons such as the profile header's
-      // "Profile Summary".
+      // Also covers other Grok-icon buttons such as "Profile Summary" in the
+      // profile header and hover card, and links into Grok such as the
+      // "Edit image" overlay on hovered photos.
       name: 'hide-grok-buttons',
       css: `
-        article[data-testid="tweet"] div:has(> button path[d^="${GROK_ICON_PATH_PREFIX}"]),
-        [data-testid="primaryColumn"] button:has(path[d^="${GROK_ICON_PATH_PREFIX}"]) {
+        :is(article[data-testid="tweet"], [data-testid="HoverCard"]) div:has(> button path[d^="${GROK_ICON_PATH_PREFIX}"]),
+        [data-testid="primaryColumn"] button:has(path[d^="${GROK_ICON_PATH_PREFIX}"]),
+        a[href^="/i/grok-redirect"] {
           display: none !important;
         }`,
     },
